@@ -2,18 +2,28 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\OrderStatus;
+use App\Enums\PaymentType;
+use App\Exceptions\BusinessException;
+use App\Exceptions\ForbiddenException;
+use App\Exceptions\StateTransitionException;
 use App\Http\Requests\OrderRequest;
 use App\Http\Resources\OrderResource;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
+use App\Repositories\OrderRepository;
+use App\Services\PermissionService;
+use App\Services\StateMachine\OrderStateMachine;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class OrderController extends Controller
 {
-    public function __construct()
-    {
+    public function __construct(
+        protected OrderRepository $orderRepository,
+        protected PermissionService $permissionService,
+    ) {
         $this->middleware('permission:order.view')->only(['index', 'show']);
         $this->middleware('permission:order.create')->only(['store']);
         $this->middleware('permission:order.edit')->only(['update']);
@@ -23,39 +33,16 @@ class OrderController extends Controller
 
     public function index(Request $request)
     {
-        $query = Order::visibleTo($request->user())
-            ->with(['supplier:id,name', 'distributor:id,name,type', 'creator:id,name']);
+        $with = ['supplier:id,name', 'distributor:id,name,type', 'creator:id,name'];
+        $paginator = $this->orderRepository->listForUser($request->user(), $request, $with);
 
-        $this->applySearch($query, $request, ['order_no', 'tracking_no']);
-
-        if ($request->filled('status')) {
-            $query->where('status', $request->string('status'));
-        }
-
-        if ($request->filled('payment_status')) {
-            $query->where('payment_status', $request->string('payment_status'));
-        }
-
-        if ($request->filled('supplier_id')) {
-            $query->where('supplier_id', $request->integer('supplier_id'));
-        }
-
-        if ($request->filled('distributor_id')) {
-            $query->where('distributor_id', $request->integer('distributor_id'));
-        }
-
-        return OrderResource::collection(
-            $query->latest()->paginate($this->perPage($request))
-        );
+        return OrderResource::collection($paginator);
     }
 
     public function store(OrderRequest $request)
     {
         $user = $request->user();
-
-        if ($user->isPlatform()) {
-            return response()->json(['message' => '平台不直接参与买卖，订单由分销商向供应商下单'], 403);
-        }
+        $this->permissionService->forUser($user)->ensureCanCreateOrder();
 
         $data = $request->validated();
 
@@ -66,15 +53,30 @@ class OrderController extends Controller
 
             foreach ($data['items'] as $item) {
                 $product = Product::find($item['product_id']);
+
+                if (!$product) {
+                    throw BusinessException::withCode(
+                        "商品不存在: {$item['product_id']}",
+                        'PRODUCT_NOT_FOUND'
+                    );
+                }
+
+                if ($product->supplier_id !== $supplierId) {
+                    throw BusinessException::withCode(
+                        "商品 {$product->name} 不属于该供应商",
+                        'PRODUCT_SUPPLIER_MISMATCH'
+                    );
+                }
+
                 $lineSubtotal = bcmul((string) $item['quantity'], (string) $item['unit_price'], 2);
                 $subtotal = bcadd($subtotal, $lineSubtotal, 2);
 
                 $itemsPayload[] = [
                     'product_id' => $item['product_id'],
-                    'product_name' => $product?->name ?? '',
-                    'product_sku' => $product?->sku ?? '',
-                    'specification' => $product?->specification,
-                    'unit' => $product?->unit ?? 'pcs',
+                    'product_name' => $product->name,
+                    'product_sku' => $product->sku ?? '',
+                    'specification' => $product->specification,
+                    'unit' => $product->unit ?? 'pcs',
                     'quantity' => $item['quantity'],
                     'unit_price' => $item['unit_price'],
                     'subtotal' => $lineSubtotal,
@@ -88,6 +90,10 @@ class OrderController extends Controller
             $discount = $data['discount'] ?? 0;
             $shipping = $data['shipping'] ?? 0;
             $total = bcsub(bcadd(bcadd($subtotal, (string) $tax, 2), (string) $shipping, 2), (string) $discount, 2);
+
+            if ((float) $total < 0) {
+                throw BusinessException::withCode('订单金额不能为负数', 'INVALID_ORDER_AMOUNT');
+            }
 
             $distributorId = $data['distributor_id'];
 
@@ -104,7 +110,7 @@ class OrderController extends Controller
                 'total' => $total,
                 'paid_amount' => 0,
                 'payment_status' => 'unpaid',
-                'status' => 'pending',
+                'status' => OrderStatus::PENDING->value,
                 'shipping_address' => $data['shipping_address'] ?? null,
                 'billing_address' => $data['billing_address'] ?? null,
                 'remark' => $data['remark'] ?? null,
@@ -123,50 +129,72 @@ class OrderController extends Controller
 
     public function show(Request $request, Order $order)
     {
-        Order::visibleTo($request->user())->where('id', $order->id)->firstOrFail();
+        $this->orderRepository->findForUserOrFail(
+            $request->user(),
+            $order->id,
+            ['items.product', 'supplier', 'distributor', 'creator', 'payments']
+        );
 
         return new OrderResource($order->load(['items.product', 'supplier', 'distributor', 'creator', 'payments']));
     }
 
     public function update(OrderRequest $request, Order $order)
     {
-        Order::visibleTo($request->user())->where('id', $order->id)->firstOrFail();
+        $this->orderRepository->findForUserOrFail($request->user(), $order->id);
 
-        $order->update($request->safe()->except(['items', 'type', 'supplier_id', 'distributor_id', 'created_by', 'order_no', 'subtotal', 'total', 'paid_amount', 'payment_status']));
+        if ($order->getStatusEnum()->isTerminal()) {
+            throw StateTransitionException::terminalState($order->getStatusEnum()->label());
+        }
+
+        $order->update($request->safe()->except([
+            'items', 'type', 'supplier_id', 'distributor_id',
+            'created_by', 'order_no', 'subtotal', 'total',
+            'paid_amount', 'payment_status', 'status',
+        ]));
 
         return new OrderResource($order->load(['items', 'supplier', 'distributor', 'creator']));
     }
 
     public function updateStatus(Request $request, Order $order)
     {
-        Order::visibleTo($request->user())->where('id', $order->id)->firstOrFail();
+        $user = $request->user();
+        $this->orderRepository->findForUserOrFail($user, $order->id);
 
         $validated = $request->validate([
-            'status' => ['required', 'in:pending,confirmed,processing,shipped,delivered,completed,cancelled,refunded'],
+            'status' => ['required', 'string'],
         ]);
 
-        $status = $validated['status'];
-        $order->status = $status;
+        $targetStatus = OrderStatus::tryFrom($validated['status']);
 
-        $timestamps = [
-            'confirmed' => 'confirmed_at',
-            'shipped' => 'shipped_at',
-            'delivered' => 'delivered_at',
-            'completed' => 'completed_at',
-        ];
-
-        if (isset($timestamps[$status])) {
-            $order->{$timestamps[$status]} = now();
+        if (!$targetStatus) {
+            throw BusinessException::withCode(
+                '无效的订单状态值',
+                'INVALID_ORDER_STATUS',
+                [
+                    'allowed' => array_column(OrderStatus::cases(), 'value'),
+                ]
+            );
         }
 
-        $order->save();
+        $this->permissionService->forUser($user)->ensureCanUpdateOrderStatus($order, $targetStatus);
 
-        return new OrderResource($order->load(['items', 'supplier', 'distributor', 'creator']));
+        try {
+            $stateMachine = new OrderStateMachine($order);
+            $updatedOrder = $stateMachine->transitionTo($targetStatus);
+        } catch (\DomainException $e) {
+            throw new StateTransitionException($e->getMessage());
+        }
+
+        return new OrderResource($updatedOrder->load(['items', 'supplier', 'distributor', 'creator']));
     }
 
     public function destroy(Request $request, Order $order)
     {
-        Order::visibleTo($request->user())->where('id', $order->id)->firstOrFail();
+        $this->orderRepository->findForUserOrFail($request->user(), $order->id);
+
+        if ($order->payments()->where('type', PaymentType::ESCROW_DEPOSIT->value)->exists()) {
+            throw new BusinessException('订单已产生付款记录，请先处理退款后再删除');
+        }
 
         $order->delete();
 
@@ -175,22 +203,27 @@ class OrderController extends Controller
 
     public function approve(Request $request, Order $order)
     {
-        Order::visibleTo($request->user())->where('id', $order->id)->firstOrFail();
+        $user = $request->user();
+        $this->orderRepository->findForUserOrFail($user, $order->id);
 
         $validated = $request->validate([
             'status' => ['required', 'in:confirmed,cancelled,rejected'],
             'remark' => ['nullable', 'string'],
         ]);
 
-        $order->status = $validated['status'];
-        $order->remark = $validated['remark'] ?? $order->remark;
+        $targetStatus = OrderStatus::tryFrom($validated['status']);
 
-        if ($validated['status'] === 'confirmed' && !$order->confirmed_at) {
-            $order->confirmed_at = now();
+        $this->permissionService->forUser($user)->ensureCanApproveOrder($order);
+
+        try {
+            $stateMachine = new OrderStateMachine($order);
+            $updatedOrder = $stateMachine->transitionTo($targetStatus, [
+                'remark' => $validated['remark'] ?? null,
+            ]);
+        } catch (\DomainException $e) {
+            throw new StateTransitionException($e->getMessage());
         }
 
-        $order->save();
-
-        return new OrderResource($order->load(['items', 'supplier', 'distributor', 'creator']));
+        return new OrderResource($updatedOrder->load(['items', 'supplier', 'distributor', 'creator']));
     }
 }

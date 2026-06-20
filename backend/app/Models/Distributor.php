@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasDescendants;
+use App\Models\Concerns\HasVisibilityScope;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -9,7 +11,6 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Support\Collection;
 
 #[Fillable([
     'name', 'company_name', 'business_license', 'type', 'region',
@@ -22,7 +23,11 @@ use Illuminate\Support\Collection;
 ])]
 class Distributor extends Model
 {
-    use HasFactory, SoftDeletes;
+    use HasFactory, SoftDeletes, HasVisibilityScope, HasDescendants;
+
+    protected array $visibilityMap = [
+        'distributor' => ['foreign_key' => 'id', 'include_descendants' => true],
+    ];
 
     protected function casts(): array
     {
@@ -86,46 +91,6 @@ class Distributor extends Model
     public function isWholesaler(): bool
     {
         return $this->type === 'wholesaler';
-    }
-
-    public function descendantIds(): array
-    {
-        $ids = [];
-        $children = $this->children()->pluck('id')->all();
-
-        foreach ($children as $childId) {
-            $ids[] = $childId;
-            $child = static::find($childId);
-
-            if ($child) {
-                $ids = array_merge($ids, $child->descendantIds());
-            }
-        }
-
-        return array_values(array_unique($ids));
-    }
-
-    public function scopeVisibleTo(Builder $query, User $user): Builder
-    {
-        if ($user->isPlatform()) {
-            return $query;
-        }
-
-        if ($user->isDistributor() && $user->distributor_id) {
-            $ids = [$user->distributor_id];
-
-            if ($user->isRegionalAgent()) {
-                $distributor = static::find($user->distributor_id);
-
-                if ($distributor) {
-                    $ids = array_merge($ids, $distributor->descendantIds());
-                }
-            }
-
-            return $query->whereIn('id', $ids);
-        }
-
-        return $query->whereRaw('1=0');
     }
 
     public function scopeActive(Builder $query): Builder

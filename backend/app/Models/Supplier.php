@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasVisibilityScope;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -18,7 +19,11 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 ])]
 class Supplier extends Model
 {
-    use HasFactory, SoftDeletes;
+    use HasFactory, SoftDeletes, HasVisibilityScope;
+
+    protected array $visibilityMap = [
+        'supplier' => ['foreign_key' => 'id'],
+    ];
 
     protected function casts(): array
     {
@@ -56,7 +61,7 @@ class Supplier extends Model
         return $this->hasMany(Warehouse::class);
     }
 
-    public function shipments(): HasMany
+    public function shipments(): HasManyThrough
     {
         return $this->hasManyThrough(Shipment::class, Order::class);
     }
@@ -64,19 +69,6 @@ class Supplier extends Model
     public function scopeCrossBorder(Builder $query): Builder
     {
         return $query->where('is_cross_border', true);
-    }
-
-    public function scopeVisibleTo(Builder $query, User $user): Builder
-    {
-        if ($user->isPlatform()) {
-            return $query;
-        }
-
-        if ($user->isSupplier()) {
-            return $query->where('id', $user->supplier_id);
-        }
-
-        return $query->whereRaw('1=0');
     }
 
     public function scopeActive(Builder $query): Builder

@@ -2,37 +2,26 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\CustomsDeclarationStatus;
+use App\Exceptions\BusinessException;
+use App\Exceptions\StateTransitionException;
 use App\Models\CustomsDeclaration;
+use App\Repositories\CustomsDeclarationRepository;
 use Illuminate\Http\Request;
 
 class CustomsDeclarationController extends Controller
 {
+    public function __construct(
+        protected CustomsDeclarationRepository $declarationRepository,
+    ) {
+    }
+
     public function index(Request $request)
     {
-        $query = CustomsDeclaration::visibleTo($request->user())
-            ->with(['order', 'shipment']);
+        $with = ['order', 'shipment'];
+        $paginator = $this->declarationRepository->listForUser($request->user(), $request, $with);
 
-        $this->applySearch($query, $request, ['declaration_no', 'declarant', 'customs_broker']);
-
-        if ($request->filled('status')) {
-            $query->where('status', $request->string('status'));
-        }
-
-        if ($request->filled('type')) {
-            $query->where('type', $request->string('type'));
-        }
-
-        if ($request->filled('order_id')) {
-            $query->where('order_id', $request->integer('order_id'));
-        }
-
-        if ($request->filled('shipment_id')) {
-            $query->where('shipment_id', $request->integer('shipment_id'));
-        }
-
-        return response()->json(
-            $query->latest()->paginate($this->perPage($request))
-        );
+        return response()->json($paginator);
     }
 
     public function store(Request $request)
@@ -65,7 +54,11 @@ class CustomsDeclarationController extends Controller
 
     public function show(Request $request, CustomsDeclaration $customsDeclaration)
     {
-        CustomsDeclaration::visibleTo($request->user())->where('id', $customsDeclaration->id)->firstOrFail();
+        $this->declarationRepository->findForUserOrFail(
+            $request->user(),
+            $customsDeclaration->id,
+            ['order', 'shipment', 'items.product']
+        );
 
         return response()->json(
             $customsDeclaration->load(['order', 'shipment', 'items.product'])
@@ -74,7 +67,11 @@ class CustomsDeclarationController extends Controller
 
     public function update(Request $request, CustomsDeclaration $customsDeclaration)
     {
-        CustomsDeclaration::visibleTo($request->user())->where('id', $customsDeclaration->id)->firstOrFail();
+        $this->declarationRepository->findForUserOrFail($request->user(), $customsDeclaration->id);
+
+        if ($customsDeclaration->getStatusEnum()->isTerminal()) {
+            throw new StateTransitionException("报关已处于终态（{$customsDeclaration->getStatusEnum()->label()}），无法修改");
+        }
 
         $validated = $request->validate([
             'declaration_no' => 'sometimes|string|max:100|unique:customs_declarations,declaration_no,' . $customsDeclaration->id,
@@ -104,7 +101,11 @@ class CustomsDeclarationController extends Controller
 
     public function destroy(Request $request, CustomsDeclaration $customsDeclaration)
     {
-        CustomsDeclaration::visibleTo($request->user())->where('id', $customsDeclaration->id)->firstOrFail();
+        $this->declarationRepository->findForUserOrFail($request->user(), $customsDeclaration->id);
+
+        if ($customsDeclaration->getStatusEnum()->isTerminal() && !$request->user()->isPlatform()) {
+            throw new BusinessException('已放行的报关单仅允许平台管理员删除');
+        }
 
         $customsDeclaration->delete();
 
@@ -113,14 +114,31 @@ class CustomsDeclarationController extends Controller
 
     public function updateStatus(Request $request, CustomsDeclaration $customsDeclaration)
     {
-        CustomsDeclaration::visibleTo($request->user())->where('id', $customsDeclaration->id)->firstOrFail();
+        $this->declarationRepository->findForUserOrFail($request->user(), $customsDeclaration->id);
 
         $validated = $request->validate([
-            'status' => 'required|in:pending,declared,inspecting,released,rejected,appealing',
+            'status' => 'required|string',
         ]);
 
-        $customsDeclaration->update($validated);
+        $targetStatus = CustomsDeclarationStatus::tryFrom($validated['status']);
 
-        return response()->json($customsDeclaration);
+        if (!$targetStatus) {
+            throw BusinessException::withCode(
+                '无效的报关状态值',
+                'INVALID_DECLARATION_STATUS',
+                [
+                    'allowed' => array_column(CustomsDeclarationStatus::cases(), 'value'),
+                ]
+            );
+        }
+
+        try {
+            $stateMachine = new \App\Services\StateMachine\CustomsDeclarationStateMachine($customsDeclaration);
+            $updated = $stateMachine->transitionTo($targetStatus);
+        } catch (\DomainException $e) {
+            throw new StateTransitionException($e->getMessage());
+        }
+
+        return response()->json($updated);
     }
 }

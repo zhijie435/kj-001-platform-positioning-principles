@@ -2,9 +2,12 @@
 
 namespace App\Models;
 
+use App\Enums\UserType;
+use App\Models\Concerns\HasVisibilityScope;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -32,6 +35,7 @@ class User extends Authenticatable
             'password' => 'hashed',
             'is_active' => 'boolean',
             'accessible_markets' => 'array',
+            'user_type' => UserType::class,
         ];
     }
 
@@ -57,17 +61,17 @@ class User extends Authenticatable
 
     public function isPlatform(): bool
     {
-        return $this->user_type === 'platform';
+        return $this->user_type === UserType::PLATFORM;
     }
 
     public function isSupplier(): bool
     {
-        return $this->user_type === 'supplier';
+        return $this->user_type === UserType::SUPPLIER;
     }
 
     public function isDistributor(): bool
     {
-        return $this->user_type === 'distributor';
+        return $this->user_type === UserType::DISTRIBUTOR;
     }
 
     public function isRegionalAgent(): bool
@@ -91,5 +95,12 @@ class User extends Authenticatable
         }
 
         return in_array($marketId, $this->accessible_markets);
+    }
+
+    public function getUserTypeEnum(): ?UserType
+    {
+        $raw = $this->getRawOriginal('user_type') ?? $this->user_type;
+
+        return $raw ? UserType::tryFrom($raw) : null;
     }
 }

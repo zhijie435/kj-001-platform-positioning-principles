@@ -2,6 +2,9 @@
 
 namespace App\Models;
 
+use App\Enums\PaymentStatus;
+use App\Enums\PaymentType;
+use App\Models\Concerns\HasVisibilityScope;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -16,7 +19,12 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 ])]
 class Payment extends Model
 {
-    use HasFactory, SoftDeletes;
+    use HasFactory, SoftDeletes, HasVisibilityScope;
+
+    protected array $visibilityMap = [
+        'supplier' => ['relation' => 'order', 'foreign_key' => 'supplier_id'],
+        'distributor' => ['relation' => 'order', 'foreign_key' => 'distributor_id', 'include_descendants' => true],
+    ];
 
     protected function casts(): array
     {
@@ -24,6 +32,8 @@ class Payment extends Model
             'amount' => 'decimal:2',
             'fee_amount' => 'decimal:2',
             'payment_date' => 'date',
+            'type' => PaymentType::class,
+            'status' => PaymentStatus::class,
         ];
     }
 
@@ -37,37 +47,16 @@ class Payment extends Model
         return $this->belongsTo(User::class, 'created_by');
     }
 
-    public function scopeVisibleTo(Builder $query, User $user): Builder
-    {
-        if ($user->isPlatform()) {
-            return $query;
-        }
-
-        return $query->whereHas('order', function (Builder $q) use ($user) {
-            if ($user->isSupplier()) {
-                $q->where('supplier_id', $user->supplier_id);
-            } elseif ($user->isDistributor() && $user->distributor_id) {
-                $ids = [$user->distributor_id];
-
-                if ($user->isRegionalAgent() && $user->distributor) {
-                    $ids = array_merge($ids, $user->distributor->descendantIds());
-                }
-
-                $q->whereIn('distributor_id', $ids);
-            } else {
-                $q->whereRaw('1=0');
-            }
-        });
-    }
-
     public function scopeOfOrder(Builder $query, $orderId): Builder
     {
         return $query->where('order_id', $orderId);
     }
 
-    public function scopeByType(Builder $query, $type): Builder
+    public function scopeByType(Builder $query, PaymentType|string $type): Builder
     {
-        return $query->where('type', $type);
+        $value = $type instanceof PaymentType ? $type->value : $type;
+
+        return $query->where('type', $value);
     }
 
     public function scopeByMethod(Builder $query, $method): Builder
@@ -77,46 +66,64 @@ class Payment extends Model
 
     public function isEscrowDeposit(): bool
     {
-        return $this->type === 'escrow_deposit';
+        return $this->type === PaymentType::ESCROW_DEPOSIT;
     }
 
     public function isEscrowRelease(): bool
     {
-        return $this->type === 'escrow_release';
+        return $this->type === PaymentType::ESCROW_RELEASE;
     }
 
     public function isPlatformFee(): bool
     {
-        return $this->type === 'platform_fee';
+        return $this->type === PaymentType::PLATFORM_FEE;
     }
 
     public function isRefund(): bool
     {
-        return $this->type === 'refund';
+        return $this->type === PaymentType::REFUND;
     }
 
     public function isIncome(): bool
     {
-        return in_array($this->type, ['escrow_deposit', 'platform_fee'], true);
+        $type = $this->getTypeEnum();
+
+        return $type?->isIncome() ?? false;
     }
 
     public function isExpense(): bool
     {
-        return in_array($this->type, ['escrow_release', 'refund'], true);
+        $type = $this->getTypeEnum();
+
+        return $type?->isExpense() ?? false;
     }
 
     public function isCompleted(): bool
     {
-        return $this->status === 'completed';
+        return $this->status === PaymentStatus::COMPLETED;
     }
 
     public function isPending(): bool
     {
-        return $this->status === 'pending';
+        return $this->status === PaymentStatus::PENDING;
     }
 
     public function isFailed(): bool
     {
-        return $this->status === 'failed';
+        return $this->status === PaymentStatus::FAILED;
+    }
+
+    public function getTypeEnum(): ?PaymentType
+    {
+        $raw = $this->getRawOriginal('type') ?? $this->type;
+
+        return $raw ? PaymentType::tryFrom($raw) : null;
+    }
+
+    public function getStatusEnum(): ?PaymentStatus
+    {
+        $raw = $this->getRawOriginal('status') ?? $this->status;
+
+        return $raw ? PaymentStatus::tryFrom($raw) : null;
     }
 }

@@ -2,6 +2,9 @@
 
 namespace App\Models;
 
+use App\Enums\OrderPaymentStatus;
+use App\Enums\OrderStatus;
+use App\Models\Concerns\HasVisibilityScope;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -22,7 +25,12 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 ])]
 class Order extends Model
 {
-    use HasFactory, SoftDeletes;
+    use HasFactory, SoftDeletes, HasVisibilityScope;
+
+    protected array $visibilityMap = [
+        'supplier' => ['foreign_key' => 'supplier_id'],
+        'distributor' => ['foreign_key' => 'distributor_id', 'include_descendants' => true],
+    ];
 
     protected function casts(): array
     {
@@ -44,6 +52,8 @@ class Order extends Model
             'vat_fee' => 'decimal:2',
             'customs_fee' => 'decimal:2',
             'other_fee' => 'decimal:2',
+            'status' => OrderStatus::class,
+            'payment_status' => OrderPaymentStatus::class,
         ];
     }
 
@@ -107,29 +117,6 @@ class Order extends Model
         );
     }
 
-    public function scopeVisibleTo(Builder $query, User $user): Builder
-    {
-        if ($user->isPlatform()) {
-            return $query;
-        }
-
-        if ($user->isSupplier()) {
-            return $query->where('supplier_id', $user->supplier_id);
-        }
-
-        if ($user->isDistributor() && $user->distributor_id) {
-            $ids = [$user->distributor_id];
-
-            if ($user->isRegionalAgent() && $user->distributor) {
-                $ids = array_merge($ids, $user->distributor->descendantIds());
-            }
-
-            return $query->whereIn('distributor_id', $ids);
-        }
-
-        return $query->whereRaw('1=0');
-    }
-
     public function scopeOfSupplier(Builder $query, $supplierId): Builder
     {
         return $query->where('supplier_id', $supplierId);
@@ -140,53 +127,72 @@ class Order extends Model
         return $query->where('distributor_id', $distributorId);
     }
 
-    public function scopeByStatus(Builder $query, $status): Builder
+    public function scopeByStatus(Builder $query, OrderStatus|string $status): Builder
     {
-        return $query->where('status', $status);
+        $value = $status instanceof OrderStatus ? $status->value : $status;
+
+        return $query->where('status', $value);
     }
 
-    public function scopeByPaymentStatus(Builder $query, $status): Builder
+    public function scopeByPaymentStatus(Builder $query, OrderPaymentStatus|string $status): Builder
     {
-        return $query->where('payment_status', $status);
+        $value = $status instanceof OrderPaymentStatus ? $status->value : $status;
+
+        return $query->where('payment_status', $value);
     }
 
     public function isPending(): bool
     {
-        return $this->status === 'pending';
+        return $this->status === OrderStatus::PENDING;
     }
 
     public function isConfirmed(): bool
     {
-        return $this->status === 'confirmed';
+        return $this->status === OrderStatus::CONFIRMED;
     }
 
     public function isShipped(): bool
     {
-        return $this->status === 'shipped';
+        return $this->status === OrderStatus::SHIPPED;
     }
 
     public function isDelivered(): bool
     {
-        return $this->status === 'delivered';
+        return $this->status === OrderStatus::DELIVERED;
     }
 
     public function isCompleted(): bool
     {
-        return $this->status === 'completed';
+        return $this->status === OrderStatus::COMPLETED;
+    }
+
+    public function isCancelled(): bool
+    {
+        return $this->status === OrderStatus::CANCELLED;
     }
 
     public function isPaid(): bool
     {
-        return $this->payment_status === 'paid';
+        return $this->payment_status === OrderPaymentStatus::PAID;
     }
 
     public function isUnpaid(): bool
     {
-        return $this->payment_status === 'unpaid';
+        return $this->payment_status === OrderPaymentStatus::UNPAID;
     }
 
     public function isPartialPaid(): bool
     {
-        return $this->payment_status === 'partial';
+        return $this->payment_status === OrderPaymentStatus::PARTIAL;
+    }
+
+    public function getStatusEnum(): OrderStatus
+    {
+        return OrderStatus::from($this->getRawOriginal('status') ?? $this->status);
+    }
+
+    public function getPaymentStatusEnum(): OrderPaymentStatus
+    {
+        return OrderPaymentStatus::from($this->getRawOriginal('payment_status') ?? $this->payment_status);
     }
 }

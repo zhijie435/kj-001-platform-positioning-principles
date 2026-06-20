@@ -2,46 +2,35 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\ShipmentStatus;
+use App\Exceptions\BusinessException;
+use App\Exceptions\StateTransitionException;
 use App\Models\Shipment;
-use App\Services\CrossBorderStatusService;
+use App\Repositories\ShipmentRepository;
+use App\Services\PermissionService;
+use App\Services\StateMachine\ShipmentStateMachine;
 use Illuminate\Http\Request;
 
 class ShipmentController extends Controller
 {
     public function __construct(
-        private CrossBorderStatusService $statusService,
-    ) {}
+        protected ShipmentRepository $shipmentRepository,
+        protected PermissionService $permissionService,
+    ) {
+    }
 
     public function index(Request $request)
     {
-        $query = Shipment::visibleTo($request->user())
-            ->with(['order', 'shippingMethod', 'originMarket', 'destinationMarket']);
+        $with = ['order', 'shippingMethod', 'originMarket', 'destinationMarket'];
+        $paginator = $this->shipmentRepository->listForUser($request->user(), $request, $with);
 
-        $this->applySearch($query, $request, ['tracking_no', 'receiver_name', 'receiver_phone']);
-
-        if ($request->filled('status')) {
-            $query->where('status', $request->string('status'));
-        }
-
-        if ($request->filled('order_id')) {
-            $query->where('order_id', $request->integer('order_id'));
-        }
-
-        if ($request->filled('destination_market_id')) {
-            $query->where('destination_market_id', $request->integer('destination_market_id'));
-        }
-
-        if ($request->filled('shipping_method_id')) {
-            $query->where('shipping_method_id', $request->integer('shipping_method_id'));
-        }
-
-        return response()->json(
-            $query->latest()->paginate($this->perPage($request))
-        );
+        return response()->json($paginator);
     }
 
     public function store(Request $request)
     {
+        $user = $request->user();
+
         $validated = $request->validate([
             'tracking_no' => 'required|string|max:100|unique:shipments,tracking_no',
             'order_id' => 'nullable|exists:orders,id',
@@ -75,6 +64,11 @@ class ShipmentController extends Controller
             'remark' => 'nullable|string',
         ]);
 
+        if (!empty($validated['order_id'])) {
+            $orderRepo = new \App\Repositories\OrderRepository();
+            $orderRepo->findForUserOrFail($user, (int) $validated['order_id']);
+        }
+
         $shipment = Shipment::create($validated);
 
         return response()->json($shipment->load(['order', 'shippingMethod', 'originMarket', 'destinationMarket']));
@@ -82,7 +76,11 @@ class ShipmentController extends Controller
 
     public function show(Request $request, Shipment $shipment)
     {
-        Shipment::visibleTo($request->user())->where('id', $shipment->id)->firstOrFail();
+        $this->shipmentRepository->findForUserOrFail(
+            $request->user(),
+            $shipment->id,
+            ['order', 'shippingMethod', 'originWarehouse', 'destinationWarehouse', 'originMarket', 'destinationMarket', 'declarations']
+        );
 
         return response()->json(
             $shipment->load([
@@ -96,7 +94,14 @@ class ShipmentController extends Controller
 
     public function update(Request $request, Shipment $shipment)
     {
-        Shipment::visibleTo($request->user())->where('id', $shipment->id)->firstOrFail();
+        $user = $request->user();
+        $this->shipmentRepository->findForUserOrFail($user, $shipment->id);
+
+        $this->permissionService->forUser($user)->ensureCanManageShipment($shipment);
+
+        if ($shipment->getStatusEnum()->isTerminal()) {
+            throw new StateTransitionException("物流已处于终态（{$shipment->getStatusEnum()->label()}），无法修改");
+        }
 
         $validated = $request->validate([
             'tracking_no' => 'sometimes|string|max:100|unique:shipments,tracking_no,' . $shipment->id,
@@ -138,7 +143,11 @@ class ShipmentController extends Controller
 
     public function destroy(Request $request, Shipment $shipment)
     {
-        Shipment::visibleTo($request->user())->where('id', $shipment->id)->firstOrFail();
+        $this->shipmentRepository->findForUserOrFail($request->user(), $shipment->id);
+
+        if (!$shipment->isPending() && !$request->user()->isPlatform()) {
+            throw new BusinessException('非待发货状态的物流记录仅允许平台管理员删除');
+        }
 
         $shipment->delete();
 
@@ -147,45 +156,41 @@ class ShipmentController extends Controller
 
     public function updateStatus(Request $request, Shipment $shipment)
     {
-        Shipment::visibleTo($request->user())->where('id', $shipment->id)->firstOrFail();
+        $user = $request->user();
+        $this->shipmentRepository->findForUserOrFail($user, $shipment->id);
 
         $validated = $request->validate([
-            'status' => 'required|in:pending,picked_up,shipped,in_transit,customs,out_for_delivery,delivered,failed,returned,cancelled',
+            'status' => 'required|string',
             'location' => 'nullable|string|max:255',
             'description' => 'nullable|string',
         ]);
 
-        $targetStatus = $validated['status'];
+        $targetStatus = ShipmentStatus::tryFrom($validated['status']);
 
-        $validation = $this->statusService->validateShipmentTransition($shipment, $targetStatus);
-
-        if (!$validation['valid']) {
-            return response()->json([
-                'message' => $validation['message'],
-            ], 422);
+        if (!$targetStatus) {
+            throw BusinessException::withCode(
+                '无效的物流状态值',
+                'INVALID_SHIPMENT_STATUS',
+                [
+                    'allowed' => array_column(ShipmentStatus::cases(), 'value'),
+                ]
+            );
         }
 
-        $statusField = match ($targetStatus) {
-            'shipped' => 'shipped_at',
-            'in_transit' => 'in_transit_at',
-            'customs' => 'customs_at',
-            'delivered' => 'delivered_at',
-            'failed' => 'failed_at',
-            default => null,
-        };
+        $this->permissionService->forUser($user)->ensureCanManageShipment($shipment);
 
-        $update = ['status' => $targetStatus];
-        if ($statusField && !$shipment->$statusField) {
-            $update[$statusField] = now();
+        try {
+            $stateMachine = new ShipmentStateMachine($shipment);
+            $updatedShipment = $stateMachine->transitionTo($targetStatus, [
+                'location' => $validated['location'] ?? '',
+                'description' => $validated['description'] ?? '',
+            ]);
+        } catch (\DomainException $e) {
+            throw new StateTransitionException($e->getMessage());
         }
 
-        $shipment->addTrackingEvent(
-            $targetStatus,
-            $validated['location'] ?? '',
-            $validated['description'] ?? ''
+        return response()->json(
+            $updatedShipment->load(['order', 'shippingMethod', 'originMarket', 'destinationMarket'])
         );
-        $shipment->update($update);
-
-        return response()->json($shipment->fresh()->load(['order', 'shippingMethod', 'originMarket', 'destinationMarket']));
     }
 }

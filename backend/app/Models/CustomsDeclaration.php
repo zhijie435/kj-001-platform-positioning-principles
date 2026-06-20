@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Enums\CustomsDeclarationStatus;
+use App\Models\Concerns\HasVisibilityScope;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -18,7 +20,12 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 ])]
 class CustomsDeclaration extends Model
 {
-    use HasFactory, SoftDeletes;
+    use HasFactory, SoftDeletes, HasVisibilityScope;
+
+    protected array $visibilityMap = [
+        'supplier' => ['relation' => 'order', 'foreign_key' => 'supplier_id'],
+        'distributor' => ['relation' => 'order', 'foreign_key' => 'distributor_id', 'include_descendants' => true],
+    ];
 
     protected function casts(): array
     {
@@ -31,6 +38,7 @@ class CustomsDeclaration extends Model
             'vat_amount' => 'decimal:2',
             'total_fee' => 'decimal:2',
             'documents' => 'array',
+            'status' => CustomsDeclarationStatus::class,
         ];
     }
 
@@ -49,36 +57,11 @@ class CustomsDeclaration extends Model
         return $this->hasMany(CustomsDeclarationItem::class);
     }
 
-    public function scopeVisibleTo(Builder $query, User $user): Builder
+    public function scopeByStatus(Builder $query, CustomsDeclarationStatus|string $status): Builder
     {
-        if ($user->isPlatform()) {
-            return $query;
-        }
+        $value = $status instanceof CustomsDeclarationStatus ? $status->value : $status;
 
-        if ($user->isSupplier()) {
-            return $query->whereHas('order', function (Builder $q) use ($user) {
-                $q->where('supplier_id', $user->supplier_id);
-            });
-        }
-
-        if ($user->isDistributor() && $user->distributor_id) {
-            return $query->whereHas('order', function (Builder $q) use ($user) {
-                $ids = [$user->distributor_id];
-
-                if ($user->isRegionalAgent() && $user->distributor) {
-                    $ids = array_merge($ids, $user->distributor->descendantIds());
-                }
-
-                $q->whereIn('distributor_id', $ids);
-            });
-        }
-
-        return $query->whereRaw('1=0');
-    }
-
-    public function scopeByStatus(Builder $query, string $status): Builder
-    {
-        return $query->where('status', $status);
+        return $query->where('status', $value);
     }
 
     public function scopeByType(Builder $query, string $type): Builder
@@ -103,26 +86,31 @@ class CustomsDeclaration extends Model
 
     public function isPending(): bool
     {
-        return $this->status === 'pending';
+        return $this->status === CustomsDeclarationStatus::PENDING;
     }
 
     public function isDeclared(): bool
     {
-        return $this->status === 'declared';
+        return $this->status === CustomsDeclarationStatus::DECLARED;
     }
 
     public function isInspecting(): bool
     {
-        return $this->status === 'inspecting';
+        return $this->status === CustomsDeclarationStatus::INSPECTING;
     }
 
     public function isReleased(): bool
     {
-        return $this->status === 'released';
+        return $this->status === CustomsDeclarationStatus::RELEASED;
     }
 
     public function isRejected(): bool
     {
-        return $this->status === 'rejected';
+        return $this->status === CustomsDeclarationStatus::REJECTED;
+    }
+
+    public function getStatusEnum(): CustomsDeclarationStatus
+    {
+        return CustomsDeclarationStatus::from($this->getRawOriginal('status') ?? $this->status);
     }
 }

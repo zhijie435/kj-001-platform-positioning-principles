@@ -47,4 +47,23 @@ abstract class Controller extends \Illuminate\Routing\Controller
 
         return $default;
     }
+
+    protected function success(mixed $data = null, string $message = '操作成功', int $code = 200)
+    {
+        return response()->json([
+            'success' => true,
+            'message' => $message,
+            'data' => $data,
+        ], $code);
+    }
+
+    protected function error(string $message = '操作失败', string $errorCode = 'ERROR', array $details = [], int $code = 400)
+    {
+        return response()->json([
+            'success' => false,
+            'message' => $message,
+            'error_code' => $errorCode,
+            'details' => $details,
+        ], $code);
+    }
 }

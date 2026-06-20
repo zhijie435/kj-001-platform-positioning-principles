@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Enums\ShipmentStatus;
+use App\Models\Concerns\HasVisibilityScope;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -24,7 +26,12 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 ])]
 class Shipment extends Model
 {
-    use HasFactory, SoftDeletes;
+    use HasFactory, SoftDeletes, HasVisibilityScope;
+
+    protected array $visibilityMap = [
+        'supplier' => ['relation' => 'order', 'foreign_key' => 'supplier_id'],
+        'distributor' => ['relation' => 'order', 'foreign_key' => 'distributor_id', 'include_descendants' => true],
+    ];
 
     protected function casts(): array
     {
@@ -44,6 +51,7 @@ class Shipment extends Model
             'delivered_at' => 'datetime',
             'failed_at' => 'datetime',
             'tracking_history' => 'array',
+            'status' => ShipmentStatus::class,
         ];
     }
 
@@ -82,36 +90,11 @@ class Shipment extends Model
         return $this->hasMany(CustomsDeclaration::class);
     }
 
-    public function scopeVisibleTo(Builder $query, User $user): Builder
+    public function scopeByStatus(Builder $query, ShipmentStatus|string $status): Builder
     {
-        if ($user->isPlatform()) {
-            return $query;
-        }
+        $value = $status instanceof ShipmentStatus ? $status->value : $status;
 
-        if ($user->isSupplier()) {
-            return $query->whereHas('order', function (Builder $q) use ($user) {
-                $q->where('supplier_id', $user->supplier_id);
-            });
-        }
-
-        if ($user->isDistributor() && $user->distributor_id) {
-            return $query->whereHas('order', function (Builder $q) use ($user) {
-                $ids = [$user->distributor_id];
-
-                if ($user->isRegionalAgent() && $user->distributor) {
-                    $ids = array_merge($ids, $user->distributor->descendantIds());
-                }
-
-                $q->whereIn('distributor_id', $ids);
-            });
-        }
-
-        return $query->whereRaw('1=0');
-    }
-
-    public function scopeByStatus(Builder $query, string $status): Builder
-    {
-        return $query->where('status', $status);
+        return $query->where('status', $value);
     }
 
     public function scopeByOrder(Builder $query, $orderId): Builder
@@ -131,37 +114,42 @@ class Shipment extends Model
 
     public function isPending(): bool
     {
-        return $this->status === 'pending';
+        return $this->status === ShipmentStatus::PENDING;
     }
 
     public function isShipped(): bool
     {
-        return $this->status === 'shipped';
+        return $this->status === ShipmentStatus::SHIPPED;
     }
 
     public function isInTransit(): bool
     {
-        return $this->status === 'in_transit';
+        return $this->status === ShipmentStatus::IN_TRANSIT;
     }
 
     public function isCustoms(): bool
     {
-        return $this->status === 'customs';
+        return $this->status === ShipmentStatus::CUSTOMS;
     }
 
     public function isDelivered(): bool
     {
-        return $this->status === 'delivered';
+        return $this->status === ShipmentStatus::DELIVERED;
     }
 
     public function isFailed(): bool
     {
-        return $this->status === 'failed';
+        return $this->status === ShipmentStatus::FAILED;
     }
 
     public function isReturned(): bool
     {
-        return $this->status === 'returned';
+        return $this->status === ShipmentStatus::RETURNED;
+    }
+
+    public function isCancelled(): bool
+    {
+        return $this->status === ShipmentStatus::CANCELLED;
     }
 
     public function addTrackingEvent(string $status, string $location, string $description): void
@@ -174,5 +162,10 @@ class Shipment extends Model
             'time' => now()->toDateTimeString(),
         ];
         $this->tracking_history = $history;
+    }
+
+    public function getStatusEnum(): ShipmentStatus
+    {
+        return ShipmentStatus::from($this->getRawOriginal('status') ?? $this->status);
     }
 }
