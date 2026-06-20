@@ -16,6 +16,9 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'payment_status', 'status', 'shipping_address', 'billing_address',
     'tracking_no', 'confirmed_at', 'shipped_at', 'delivered_at',
     'completed_at', 'remark',
+    'market_id', 'currency', 'exchange_rate', 'is_cross_border',
+    'incoterms', 'insurance_fee', 'duty_fee', 'vat_fee',
+    'customs_fee', 'other_fee',
 ])]
 class Order extends Model
 {
@@ -34,6 +37,13 @@ class Order extends Model
             'shipped_at' => 'datetime',
             'delivered_at' => 'datetime',
             'completed_at' => 'datetime',
+            'exchange_rate' => 'decimal:6',
+            'is_cross_border' => 'boolean',
+            'insurance_fee' => 'decimal:2',
+            'duty_fee' => 'decimal:2',
+            'vat_fee' => 'decimal:2',
+            'customs_fee' => 'decimal:2',
+            'other_fee' => 'decimal:2',
         ];
     }
 
@@ -60,6 +70,41 @@ class Order extends Model
     public function payments(): HasMany
     {
         return $this->hasMany(Payment::class);
+    }
+
+    public function market(): BelongsTo
+    {
+        return $this->belongsTo(Market::class);
+    }
+
+    public function shipments(): HasMany
+    {
+        return $this->hasMany(Shipment::class);
+    }
+
+    public function declarations(): HasMany
+    {
+        return $this->hasMany(CustomsDeclaration::class);
+    }
+
+    public function scopeCrossBorder(Builder $query): Builder
+    {
+        return $query->where('is_cross_border', true);
+    }
+
+    public function scopeByMarket(Builder $query, $marketId): Builder
+    {
+        return $query->where('market_id', $marketId);
+    }
+
+    public function calculateCrossBorderTotal(): float
+    {
+        return round(
+            $this->subtotal + $this->tax + $this->shipping + $this->insurance_fee
+            + $this->duty_fee + $this->vat_fee + $this->customs_fee
+            + $this->other_fee - $this->discount,
+            2
+        );
     }
 
     public function scopeVisibleTo(Builder $query, User $user): Builder

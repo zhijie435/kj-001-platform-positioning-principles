@@ -15,6 +15,9 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'specification', 'unit', 'cost_price', 'wholesale_price',
     'retail_price', 'agent_price', 'stock_quantity', 'safety_stock',
     'description', 'images', 'status',
+    'hs_code', 'country_of_origin', 'weight', 'volume',
+    'is_cross_border', 'material', 'brand', 'certifications',
+    'customs_description', 'local_names',
 ])]
 class Product extends Model
 {
@@ -30,6 +33,11 @@ class Product extends Model
             'stock_quantity' => 'integer',
             'safety_stock' => 'integer',
             'images' => 'array',
+            'weight' => 'decimal:3',
+            'volume' => 'decimal:3',
+            'is_cross_border' => 'boolean',
+            'certifications' => 'array',
+            'local_names' => 'array',
         ];
     }
 
@@ -51,6 +59,26 @@ class Product extends Model
     public function inventory(): HasMany
     {
         return $this->hasMany(Inventory::class);
+    }
+
+    public function marketPrices(): HasMany
+    {
+        return $this->hasMany(ProductMarketPrice::class);
+    }
+
+    public function scopeCrossBorder(Builder $query): Builder
+    {
+        return $query->where('is_cross_border', true);
+    }
+
+    public function getMarketPrice($marketId, string $type = 'retail'): ?float
+    {
+        $price = $this->marketPrices()
+            ->where('market_id', $marketId)
+            ->active()
+            ->first();
+
+        return $price?->getPriceFor($type);
     }
 
     public function scopeVisibleTo(Builder $query, User $user): Builder

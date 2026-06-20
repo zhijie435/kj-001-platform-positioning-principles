@@ -10,9 +10,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 #[Fillable([
-    'product_id', 'supplier_id', 'quantity', 'available_quantity',
-    'reserved_quantity', 'unit_cost', 'batch_no', 'expiry_date',
-    'location', 'remark',
+    'product_id', 'supplier_id', 'warehouse_id', 'quantity',
+    'available_quantity', 'reserved_quantity', 'unit_cost',
+    'batch_no', 'expiry_date', 'location', 'remark',
 ])]
 class Inventory extends Model
 {
@@ -39,6 +39,16 @@ class Inventory extends Model
     public function supplier(): BelongsTo
     {
         return $this->belongsTo(Supplier::class);
+    }
+
+    public function warehouse(): BelongsTo
+    {
+        return $this->belongsTo(Warehouse::class);
+    }
+
+    public function scopeByWarehouse(Builder $query, $warehouseId): Builder
+    {
+        return $query->where('warehouse_id', $warehouseId);
     }
 
     public function scopeVisibleTo(Builder $query, User $user): Builder

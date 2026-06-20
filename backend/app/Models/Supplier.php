@@ -13,6 +13,8 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'name', 'company_name', 'business_license', 'contact_person',
     'phone', 'email', 'address', 'bank_name', 'bank_account',
     'credit_limit', 'balance', 'status', 'remark',
+    'country_code', 'tax_id', 'export_license', 'import_export_code',
+    'certifications', 'serviced_markets', 'is_cross_border',
 ])]
 class Supplier extends Model
 {
@@ -23,6 +25,9 @@ class Supplier extends Model
         return [
             'credit_limit' => 'decimal:2',
             'balance' => 'decimal:2',
+            'certifications' => 'array',
+            'serviced_markets' => 'array',
+            'is_cross_border' => 'boolean',
         ];
     }
 
@@ -44,6 +49,21 @@ class Supplier extends Model
     public function inventory(): HasMany
     {
         return $this->hasMany(Inventory::class);
+    }
+
+    public function warehouses(): HasMany
+    {
+        return $this->hasMany(Warehouse::class);
+    }
+
+    public function shipments(): HasMany
+    {
+        return $this->hasManyThrough(Shipment::class, Order::class);
+    }
+
+    public function scopeCrossBorder(Builder $query): Builder
+    {
+        return $query->where('is_cross_border', true);
     }
 
     public function scopeVisibleTo(Builder $query, User $user): Builder

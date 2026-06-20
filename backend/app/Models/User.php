@@ -14,7 +14,11 @@ use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
 
-#[Fillable(['name', 'email', 'phone', 'password', 'avatar', 'user_type', 'supplier_id', 'distributor_id', 'is_active'])]
+#[Fillable([
+    'name', 'email', 'phone', 'password', 'avatar', 'user_type',
+    'supplier_id', 'distributor_id', 'is_active',
+    'country_code', 'language', 'timezone', 'accessible_markets',
+])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -27,6 +31,7 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'is_active' => 'boolean',
+            'accessible_markets' => 'array',
         ];
     }
 
@@ -73,5 +78,18 @@ class User extends Authenticatable
     public function isWholesaler(): bool
     {
         return $this->isDistributor() && $this->distributor?->type === 'wholesaler';
+    }
+
+    public function hasMarketAccess(int $marketId): bool
+    {
+        if ($this->isPlatform()) {
+            return true;
+        }
+
+        if (empty($this->accessible_markets)) {
+            return false;
+        }
+
+        return in_array($marketId, $this->accessible_markets);
     }
 }
