@@ -47,14 +47,13 @@ class OrderController extends Controller
 
         $order = DB::transaction(function () use ($data, $user) {
             $subtotal = '0';
-            $supplierId = $data['supplier_id'] ?? null;
+            $supplierId = $data['supplier_id'];
             $itemsPayload = [];
 
             foreach ($data['items'] as $item) {
                 $product = Product::find($item['product_id']);
                 $lineSubtotal = bcmul((string) $item['quantity'], (string) $item['unit_price'], 2);
                 $subtotal = bcadd($subtotal, $lineSubtotal, 2);
-                $supplierId = $supplierId ?? ($product?->supplier_id);
 
                 $itemsPayload[] = [
                     'product_id' => $item['product_id'],
@@ -76,7 +75,7 @@ class OrderController extends Controller
             $shipping = $data['shipping'] ?? 0;
             $total = bcsub(bcadd(bcadd($subtotal, (string) $tax, 2), (string) $shipping, 2), (string) $discount, 2);
 
-            $distributorId = $data['distributor_id'] ?? ($user->isDistributor() ? $user->distributor_id : null);
+            $distributorId = $data['distributor_id'];
 
             $order = Order::create([
                 'order_no' => 'ORD'.date('YmdHis').str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT),

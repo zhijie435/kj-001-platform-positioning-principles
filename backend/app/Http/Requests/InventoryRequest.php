@@ -17,7 +17,8 @@ class InventoryRequest extends FormRequest
 
         return [
             'product_id' => [$required, 'exists:products,id'],
-            'supplier_id' => ['nullable', 'exists:suppliers,id'],
+            'supplier_id' => [$required, 'exists:suppliers,id'],
+            'warehouse_id' => ['nullable', 'exists:warehouses,id'],
             'quantity' => [$required, 'integer', 'min:0'],
             'available_quantity' => ['nullable', 'integer', 'min:0'],
             'reserved_quantity' => ['nullable', 'integer', 'min:0'],

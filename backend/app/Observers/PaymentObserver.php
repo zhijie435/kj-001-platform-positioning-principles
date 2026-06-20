@@ -13,21 +13,21 @@ class PaymentObserver
 
     public function created(Payment $payment): void
     {
-        if ($payment->isIncome()) {
+        if ($payment->isEscrowDeposit() || $payment->isRefund()) {
             $this->statusService->syncPaymentToOrder($payment);
         }
     }
 
     public function updated(Payment $payment): void
     {
-        if ($payment->wasChanged(['amount', 'type', 'order_id'])) {
+        if ($payment->wasChanged(['amount', 'type', 'order_id', 'status'])) {
             $this->statusService->syncPaymentToOrder($payment);
         }
     }
 
     public function deleted(Payment $payment): void
     {
-        if ($payment->isIncome()) {
+        if ($payment->isEscrowDeposit() || $payment->isRefund()) {
             $this->statusService->syncPaymentToOrder($payment);
         }
     }

@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 #[Fillable([
     'payment_no', 'order_id', 'created_by', 'type', 'method',
     'amount', 'currency', 'payment_date', 'transaction_no', 'remark',
+    'fee_amount', 'status',
 ])]
 class Payment extends Model
 {
@@ -21,6 +22,7 @@ class Payment extends Model
     {
         return [
             'amount' => 'decimal:2',
+            'fee_amount' => 'decimal:2',
             'payment_date' => 'date',
         ];
     }
@@ -73,13 +75,48 @@ class Payment extends Model
         return $query->where('method', $method);
     }
 
+    public function isEscrowDeposit(): bool
+    {
+        return $this->type === 'escrow_deposit';
+    }
+
+    public function isEscrowRelease(): bool
+    {
+        return $this->type === 'escrow_release';
+    }
+
+    public function isPlatformFee(): bool
+    {
+        return $this->type === 'platform_fee';
+    }
+
+    public function isRefund(): bool
+    {
+        return $this->type === 'refund';
+    }
+
     public function isIncome(): bool
     {
-        return $this->type === 'income';
+        return in_array($this->type, ['escrow_deposit', 'platform_fee'], true);
     }
 
     public function isExpense(): bool
     {
-        return $this->type === 'expense';
+        return in_array($this->type, ['escrow_release', 'refund'], true);
+    }
+
+    public function isCompleted(): bool
+    {
+        return $this->status === 'completed';
+    }
+
+    public function isPending(): bool
+    {
+        return $this->status === 'pending';
+    }
+
+    public function isFailed(): bool
+    {
+        return $this->status === 'failed';
     }
 }

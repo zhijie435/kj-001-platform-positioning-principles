@@ -26,7 +26,7 @@ class ProductRequest extends FormRequest
             ],
             'barcode' => ['nullable', 'string', 'max:100'],
             'category_id' => ['nullable', 'exists:categories,id'],
-            'supplier_id' => ['nullable', 'exists:suppliers,id'],
+            'supplier_id' => [$required, 'exists:suppliers,id'],
             'specification' => ['nullable', 'string', 'max:255'],
             'unit' => ['nullable', 'string', 'max:50'],
             'cost_price' => ['nullable', 'numeric', 'min:0'],

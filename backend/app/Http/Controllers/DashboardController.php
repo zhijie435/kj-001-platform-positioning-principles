@@ -24,6 +24,20 @@ class DashboardController extends Controller
 
     private function platformStats(): array
     {
+        $escrowDeposited = Payment::where('type', 'escrow_deposit')
+            ->where('status', '!=', 'failed')
+            ->sum('amount');
+        $escrowReleased = Payment::where('type', 'escrow_release')
+            ->where('status', '!=', 'failed')
+            ->sum('amount');
+        $platformFees = Payment::where('type', 'platform_fee')
+            ->where('status', '!=', 'failed')
+            ->sum('amount');
+        $refunded = Payment::where('type', 'refund')
+            ->where('status', '!=', 'failed')
+            ->sum('amount');
+        $escrowBalance = $escrowDeposited - $escrowReleased - $refunded;
+
         return [
             'role' => 'platform',
             'counts' => [
@@ -33,7 +47,14 @@ class DashboardController extends Controller
                 'orders' => Order::count(),
             ],
             'order_stats' => $this->orderStatusStats(Order::query()),
-            'revenue' => [
+            'escrow' => [
+                'total_deposited' => $escrowDeposited,
+                'total_released' => $escrowReleased,
+                'total_refunded' => $refunded,
+                'current_balance' => max(0, $escrowBalance),
+                'platform_fees' => $platformFees,
+            ],
+            'gmv' => [
                 'total' => Order::sum('total'),
                 'paid' => Order::sum('paid_amount'),
             ],

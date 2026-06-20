@@ -45,9 +45,11 @@ class PaymentController extends Controller
             'type' => $data['type'],
             'method' => $data['method'],
             'amount' => $data['amount'],
+            'fee_amount' => $data['fee_amount'] ?? 0,
             'currency' => $data['currency'] ?? 'CNY',
             'payment_date' => $data['payment_date'],
             'transaction_no' => $data['transaction_no'] ?? null,
+            'status' => $data['status'] ?? 'completed',
             'remark' => $data['remark'] ?? null,
         ]);
 

@@ -17,12 +17,14 @@ class PaymentRequest extends FormRequest
 
         return [
             'order_id' => [$required, 'exists:orders,id'],
-            'type' => [$required, 'in:income,expense'],
+            'type' => [$required, 'in:escrow_deposit,escrow_release,platform_fee,refund'],
             'method' => [$required, 'in:cash,bank_transfer,alipay,wechat,credit,other'],
             'amount' => [$required, 'numeric', 'min:0.01'],
+            'fee_amount' => ['nullable', 'numeric', 'min:0'],
             'currency' => ['nullable', 'string', 'max:10'],
             'payment_date' => [$required, 'date'],
             'transaction_no' => ['nullable', 'string', 'max:100'],
+            'status' => ['nullable', 'in:pending,completed,failed'],
             'remark' => ['nullable', 'string'],
         ];
     }

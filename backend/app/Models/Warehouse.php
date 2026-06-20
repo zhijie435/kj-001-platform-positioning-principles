@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 #[Fillable([
-    'code', 'name', 'market_id', 'type', 'address', 'city', 'state',
+    'code', 'name', 'market_id', 'supplier_id', 'type', 'address', 'city', 'state',
     'postal_code', 'country_code', 'contact_person', 'phone', 'email',
     'capacity', 'used_capacity', 'is_active', 'remark',
 ])]
@@ -31,6 +31,11 @@ class Warehouse extends Model
     public function market(): BelongsTo
     {
         return $this->belongsTo(Market::class);
+    }
+
+    public function supplier(): BelongsTo
+    {
+        return $this->belongsTo(Supplier::class);
     }
 
     public function inventory(): HasMany
@@ -55,7 +60,7 @@ class Warehouse extends Model
         }
 
         if ($user->isSupplier()) {
-            return $query;
+            return $query->where('supplier_id', $user->supplier_id);
         }
 
         return $query->whereRaw('1=0');

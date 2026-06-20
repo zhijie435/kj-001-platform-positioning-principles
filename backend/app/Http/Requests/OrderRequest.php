@@ -16,9 +16,9 @@ class OrderRequest extends FormRequest
         $required = $this->isUpdate() ? 'sometimes|required' : 'required';
 
         return [
-            'type' => [$required, 'in:supplier_purchase,distributor_order,agent_order'],
-            'supplier_id' => ['nullable', 'exists:suppliers,id'],
-            'distributor_id' => ['nullable', 'exists:distributors,id'],
+            'type' => [$required, 'in:distributor_order,agent_order'],
+            'supplier_id' => [$required, 'exists:suppliers,id'],
+            'distributor_id' => [$required, 'exists:distributors,id'],
             'items' => [$required, 'array', 'min:1'],
             'items.*.product_id' => [$required, 'exists:products,id'],
             'items.*.quantity' => [$required, 'integer', 'min:1'],

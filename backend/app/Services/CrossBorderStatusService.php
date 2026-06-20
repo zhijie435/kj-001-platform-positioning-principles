@@ -31,15 +31,23 @@ class CrossBorderStatusService
     public function recalculateOrderPaymentStatus(Order $order): void
     {
         $incomeAmount = $order->payments()
-            ->where('type', 'income')
+            ->whereIn('type', ['escrow_deposit', 'platform_fee'])
+            ->where('status', '!=', 'failed')
             ->sum('amount');
 
-        $order->paid_amount = $incomeAmount;
+        $refundAmount = $order->payments()
+            ->where('type', 'refund')
+            ->where('status', '!=', 'failed')
+            ->sum('amount');
+
+        $netPaid = $incomeAmount - $refundAmount;
+
+        $order->paid_amount = max(0, $netPaid);
         $total = (float) $order->total;
 
-        if ($incomeAmount >= $total && $total > 0) {
+        if ($netPaid >= $total && $total > 0) {
             $order->payment_status = 'paid';
-        } elseif ($incomeAmount > 0) {
+        } elseif ($netPaid > 0) {
             $order->payment_status = 'partial';
         } else {
             $order->payment_status = 'unpaid';
