@@ -16,7 +16,7 @@ export const useAuthStore = defineStore('auth', {
 
     actions: {
         async login(email, password) {
-            const { data } = await api.post('/auth/login', { email, password });
+            const { data } = await api.post('/login', { email, password });
             this.token = data.token;
             this.user = data.user;
             localStorage.setItem('shearerline_token', data.token);
@@ -25,7 +25,7 @@ export const useAuthStore = defineStore('auth', {
         },
 
         async fetchMe() {
-            const { data } = await api.get('/auth/me');
+            const { data } = await api.get('/me');
             this.user = data;
             localStorage.setItem('shearerline_user', JSON.stringify(data));
             return data;
@@ -33,7 +33,7 @@ export const useAuthStore = defineStore('auth', {
 
         async logout() {
             try {
-                await api.post('/auth/logout');
+                await api.post('/logout');
             } finally {
                 this.reset();
             }
