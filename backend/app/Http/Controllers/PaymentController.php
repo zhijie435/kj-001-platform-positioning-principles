@@ -4,10 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\PaymentRequest;
 use App\Http\Resources\PaymentResource;
-use App\Models\Order;
 use App\Models\Payment;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 class PaymentController extends Controller
 {
@@ -40,36 +38,18 @@ class PaymentController extends Controller
         $user = $request->user();
         $data = $request->validated();
 
-        $payment = DB::transaction(function () use ($data, $user) {
-            $payment = Payment::create([
-                'payment_no' => 'PAY'.date('YmdHis').str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT),
-                'order_id' => $data['order_id'],
-                'created_by' => $user->id,
-                'type' => $data['type'],
-                'method' => $data['method'],
-                'amount' => $data['amount'],
-                'currency' => $data['currency'] ?? 'CNY',
-                'payment_date' => $data['payment_date'],
-                'transaction_no' => $data['transaction_no'] ?? null,
-                'remark' => $data['remark'] ?? null,
-            ]);
-
-            $order = Order::findOrFail($data['order_id']);
-            $paidAmount = (float) $order->paid_amount + (float) $data['amount'];
-            $total = (float) $order->total;
-
-            $order->paid_amount = $paidAmount;
-
-            if ($paidAmount >= $total) {
-                $order->payment_status = 'paid';
-            } elseif ($paidAmount > 0) {
-                $order->payment_status = 'partial';
-            }
-
-            $order->save();
-
-            return $payment;
-        });
+        $payment = Payment::create([
+            'payment_no' => 'PAY'.date('YmdHis').str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT),
+            'order_id' => $data['order_id'],
+            'created_by' => $user->id,
+            'type' => $data['type'],
+            'method' => $data['method'],
+            'amount' => $data['amount'],
+            'currency' => $data['currency'] ?? 'CNY',
+            'payment_date' => $data['payment_date'],
+            'transaction_no' => $data['transaction_no'] ?? null,
+            'remark' => $data['remark'] ?? null,
+        ]);
 
         return new PaymentResource($payment->load(['order', 'creator']));
     }

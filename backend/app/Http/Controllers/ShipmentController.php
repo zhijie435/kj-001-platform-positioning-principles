@@ -3,10 +3,15 @@
 namespace App\Http\Controllers;
 
 use App\Models\Shipment;
+use App\Services\CrossBorderStatusService;
 use Illuminate\Http\Request;
 
 class ShipmentController extends Controller
 {
+    public function __construct(
+        private CrossBorderStatusService $statusService,
+    ) {}
+
     public function index(Request $request)
     {
         $query = Shipment::visibleTo($request->user())
@@ -150,7 +155,17 @@ class ShipmentController extends Controller
             'description' => 'nullable|string',
         ]);
 
-        $statusField = match ($validated['status']) {
+        $targetStatus = $validated['status'];
+
+        $validation = $this->statusService->validateShipmentTransition($shipment, $targetStatus);
+
+        if (!$validation['valid']) {
+            return response()->json([
+                'message' => $validation['message'],
+            ], 422);
+        }
+
+        $statusField = match ($targetStatus) {
             'shipped' => 'shipped_at',
             'in_transit' => 'in_transit_at',
             'customs' => 'customs_at',
@@ -159,18 +174,18 @@ class ShipmentController extends Controller
             default => null,
         };
 
-        $update = ['status' => $validated['status']];
+        $update = ['status' => $targetStatus];
         if ($statusField && !$shipment->$statusField) {
             $update[$statusField] = now();
         }
 
         $shipment->addTrackingEvent(
-            $validated['status'],
+            $targetStatus,
             $validated['location'] ?? '',
             $validated['description'] ?? ''
         );
         $shipment->update($update);
 
-        return response()->json($shipment->fresh());
+        return response()->json($shipment->fresh()->load(['order', 'shippingMethod', 'originMarket', 'destinationMarket']));
     }
 }
