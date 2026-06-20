@@ -58,10 +58,13 @@ class DashboardController extends Controller
                 'total' => Order::sum('total'),
                 'paid' => Order::sum('paid_amount'),
             ],
+            'pending_approvals' => [
+                'suppliers' => Supplier::where('status', 'pending')->count(),
+                'distributors' => Distributor::where('status', 'pending')->count(),
+                'orders' => Order::where('status', 'pending')->count(),
+            ],
             'recent_orders' => Order::with(['supplier:id,name', 'distributor:id,name'])
                 ->latest()->limit(5)->get(),
-            'low_stock_products' => Product::whereColumn('stock_quantity', '<=', 'safety_stock')
-                ->limit(5)->get(['id', 'name', 'sku', 'stock_quantity', 'safety_stock']),
         ];
     }
 

@@ -9,6 +9,14 @@ use Illuminate\Http\Request;
 
 class ProductController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('permission:product.view')->only(['index', 'show']);
+        $this->middleware('permission:product.create')->only(['store']);
+        $this->middleware('permission:product.edit')->only(['update']);
+        $this->middleware('permission:product.delete')->only(['destroy']);
+    }
+
     public function index(Request $request)
     {
         $query = Product::visibleTo($request->user())
@@ -35,8 +43,13 @@ class ProductController extends Controller
 
     public function store(ProductRequest $request)
     {
-        $data = $request->validated();
         $user = $request->user();
+
+        if ($user->isPlatform()) {
+            return response()->json(['message' => '平台不参与自营，产品由供应商自行发布'], 403);
+        }
+
+        $data = $request->validated();
 
         if ($user->isSupplier()) {
             $data['supplier_id'] = $user->supplier_id;
@@ -56,10 +69,15 @@ class ProductController extends Controller
 
     public function update(ProductRequest $request, Product $product)
     {
+        $user = $request->user();
+
+        if ($user->isPlatform()) {
+            return response()->json(['message' => '平台不参与自营，产品由供应商自行维护'], 403);
+        }
+
         Product::visibleTo($request->user())->where('id', $product->id)->firstOrFail();
 
         $data = $request->validated();
-        $user = $request->user();
 
         if ($user->isSupplier()) {
             $data['supplier_id'] = $user->supplier_id;

@@ -12,6 +12,15 @@ use Illuminate\Support\Facades\DB;
 
 class OrderController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('permission:order.view')->only(['index', 'show']);
+        $this->middleware('permission:order.create')->only(['store']);
+        $this->middleware('permission:order.edit')->only(['update']);
+        $this->middleware('permission:order.delete')->only(['destroy']);
+        $this->middleware('permission:order.approve')->only(['approve']);
+    }
+
     public function index(Request $request)
     {
         $query = Order::visibleTo($request->user())
@@ -43,6 +52,11 @@ class OrderController extends Controller
     public function store(OrderRequest $request)
     {
         $user = $request->user();
+
+        if ($user->isPlatform()) {
+            return response()->json(['message' => '平台不直接参与买卖，订单由分销商向供应商下单'], 403);
+        }
+
         $data = $request->validated();
 
         $order = DB::transaction(function () use ($data, $user) {
@@ -157,5 +171,26 @@ class OrderController extends Controller
         $order->delete();
 
         return response()->json(['message' => '删除成功']);
+    }
+
+    public function approve(Request $request, Order $order)
+    {
+        Order::visibleTo($request->user())->where('id', $order->id)->firstOrFail();
+
+        $validated = $request->validate([
+            'status' => ['required', 'in:confirmed,cancelled,rejected'],
+            'remark' => ['nullable', 'string'],
+        ]);
+
+        $order->status = $validated['status'];
+        $order->remark = $validated['remark'] ?? $order->remark;
+
+        if ($validated['status'] === 'confirmed' && !$order->confirmed_at) {
+            $order->confirmed_at = now();
+        }
+
+        $order->save();
+
+        return new OrderResource($order->load(['items', 'supplier', 'distributor', 'creator']));
     }
 }

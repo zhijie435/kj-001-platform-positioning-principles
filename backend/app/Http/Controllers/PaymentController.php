@@ -9,6 +9,15 @@ use Illuminate\Http\Request;
 
 class PaymentController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('permission:payment.view')->only(['index', 'show']);
+        $this->middleware('permission:payment.create')->only(['store']);
+        $this->middleware('permission:payment.delete')->only(['destroy']);
+        $this->middleware('permission:payment.settle')->only(['settle']);
+        $this->middleware('permission:payment.refund')->only(['refund']);
+    }
+
     public function index(Request $request)
     {
         $query = Payment::visibleTo($request->user())
@@ -70,5 +79,61 @@ class PaymentController extends Controller
         $payment->delete();
 
         return response()->json(['message' => '删除成功']);
+    }
+
+    public function settle(Request $request, Payment $payment)
+    {
+        Payment::visibleTo($request->user())->where('id', $payment->id)->firstOrFail();
+
+        $validated = $request->validate([
+            'amount' => ['required', 'numeric', 'min:0.01'],
+            'transaction_no' => ['nullable', 'string', 'max:100'],
+            'remark' => ['nullable', 'string'],
+        ]);
+
+        $release = Payment::create([
+            'payment_no' => 'STL' . date('YmdHis') . str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT),
+            'order_id' => $payment->order_id,
+            'created_by' => $request->user()->id,
+            'type' => 'escrow_release',
+            'method' => $payment->method,
+            'amount' => $validated['amount'],
+            'fee_amount' => 0,
+            'currency' => $payment->currency,
+            'payment_date' => now()->toDateString(),
+            'transaction_no' => $validated['transaction_no'] ?? null,
+            'status' => 'completed',
+            'remark' => $validated['remark'] ?? '平台结算给供应商',
+        ]);
+
+        return new PaymentResource($release->load(['order', 'creator']));
+    }
+
+    public function refund(Request $request, Payment $payment)
+    {
+        Payment::visibleTo($request->user())->where('id', $payment->id)->firstOrFail();
+
+        $validated = $request->validate([
+            'amount' => ['required', 'numeric', 'min:0.01'],
+            'transaction_no' => ['nullable', 'string', 'max:100'],
+            'remark' => ['nullable', 'string'],
+        ]);
+
+        $refund = Payment::create([
+            'payment_no' => 'RFD' . date('YmdHis') . str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT),
+            'order_id' => $payment->order_id,
+            'created_by' => $request->user()->id,
+            'type' => 'refund',
+            'method' => $payment->method,
+            'amount' => $validated['amount'],
+            'fee_amount' => 0,
+            'currency' => $payment->currency,
+            'payment_date' => now()->toDateString(),
+            'transaction_no' => $validated['transaction_no'] ?? null,
+            'status' => 'completed',
+            'remark' => $validated['remark'] ?? '平台退款给分销商',
+        ]);
+
+        return new PaymentResource($refund->load(['order', 'creator']));
     }
 }

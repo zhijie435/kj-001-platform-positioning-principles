@@ -9,6 +9,13 @@ use Illuminate\Http\Request;
 
 class InventoryController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('permission:inventory.view')->only(['index', 'show']);
+        $this->middleware('permission:inventory.edit')->only(['store', 'update']);
+        $this->middleware('permission:inventory.edit')->only(['destroy']);
+    }
+
     public function index(Request $request)
     {
         $query = Inventory::visibleTo($request->user())
@@ -31,8 +38,13 @@ class InventoryController extends Controller
 
     public function store(InventoryRequest $request)
     {
-        $data = $request->validated();
         $user = $request->user();
+
+        if ($user->isPlatform()) {
+            return response()->json(['message' => '平台不干预商家经营，库存由供应商自行维护'], 403);
+        }
+
+        $data = $request->validated();
 
         if ($user->isSupplier()) {
             $data['supplier_id'] = $user->supplier_id;
@@ -56,10 +68,15 @@ class InventoryController extends Controller
 
     public function update(InventoryRequest $request, Inventory $inventory)
     {
+        $user = $request->user();
+
+        if ($user->isPlatform()) {
+            return response()->json(['message' => '平台不干预商家经营，库存由供应商自行维护'], 403);
+        }
+
         Inventory::visibleTo($request->user())->where('id', $inventory->id)->firstOrFail();
 
         $data = $request->validated();
-        $user = $request->user();
 
         if ($user->isSupplier()) {
             $data['supplier_id'] = $user->supplier_id;

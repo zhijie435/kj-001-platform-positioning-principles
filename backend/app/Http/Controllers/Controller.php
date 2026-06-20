@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 
-abstract class Controller
+abstract class Controller extends \Illuminate\Routing\Controller
 {
     protected function perPage(Request $request): int
     {

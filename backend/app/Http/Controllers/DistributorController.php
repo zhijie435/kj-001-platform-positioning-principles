@@ -9,6 +9,15 @@ use Illuminate\Http\Request;
 
 class DistributorController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('permission:distributor.view')->only(['index', 'show']);
+        $this->middleware('permission:distributor.create')->only(['store']);
+        $this->middleware('permission:distributor.edit')->only(['update']);
+        $this->middleware('permission:distributor.delete')->only(['destroy']);
+        $this->middleware('permission:distributor.approve')->only(['approve']);
+    }
+
     public function index(Request $request)
     {
         $query = Distributor::visibleTo($request->user())
@@ -70,5 +79,31 @@ class DistributorController extends Controller
         $distributor->delete();
 
         return response()->json(['message' => '删除成功']);
+    }
+
+    public function approve(Request $request, Distributor $distributor)
+    {
+        Distributor::visibleTo($request->user())->where('id', $distributor->id)->firstOrFail();
+
+        $validated = $request->validate([
+            'status' => ['required', 'in:active,rejected,suspended'],
+            'remark' => ['nullable', 'string'],
+        ]);
+
+        $distributor->status = $validated['status'];
+        $distributor->remark = $validated['remark'] ?? $distributor->remark;
+        $distributor->save();
+
+        return new DistributorResource($distributor);
+    }
+
+    public function toggleStatus(Request $request, Distributor $distributor)
+    {
+        Distributor::visibleTo($request->user())->where('id', $distributor->id)->firstOrFail();
+
+        $distributor->status = $distributor->status === 'active' ? 'suspended' : 'active';
+        $distributor->save();
+
+        return new DistributorResource($distributor);
     }
 }

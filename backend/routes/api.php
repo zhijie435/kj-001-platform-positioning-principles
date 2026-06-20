@@ -39,10 +39,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('/roles', RoleController::class)->names('roles');
 
     Route::apiResource('/suppliers', SupplierController::class)->names('suppliers');
+    Route::put('/suppliers/{supplier}/approve', [SupplierController::class, 'approve'])->name('suppliers.approve');
     Route::put('/suppliers/{supplier}/toggle-status', [SupplierController::class, 'toggleStatus'])->name('suppliers.toggle-status');
 
     Route::get('/distributors/tree', [DistributorController::class, 'tree'])->name('distributors.tree');
     Route::apiResource('/distributors', DistributorController::class)->names('distributors');
+    Route::put('/distributors/{distributor}/approve', [DistributorController::class, 'approve'])->name('distributors.approve');
     Route::put('/distributors/{distributor}/toggle-status', [DistributorController::class, 'toggleStatus'])->name('distributors.toggle-status');
 
     Route::get('/categories/tree', [CategoryController::class, 'tree'])->name('categories.tree');
@@ -55,6 +57,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/orders/{order}/approve', [OrderController::class, 'approve'])->name('orders.approve');
 
     Route::apiResource('/payments', PaymentController::class)->names('payments');
+    Route::post('/payments/{payment}/settle', [PaymentController::class, 'settle'])->name('payments.settle');
+    Route::post('/payments/{payment}/refund', [PaymentController::class, 'refund'])->name('payments.refund');
 
     Route::apiResource('/inventory', InventoryController::class)->names('inventory');
 
