@@ -17,15 +17,17 @@ class PermissionSeeder extends Seeder
 
         $allPermissions = array_merge(
             [
-                'supplier.view', 'supplier.create', 'supplier.edit', 'supplier.delete',
-                'distributor.view', 'distributor.create', 'distributor.edit', 'distributor.delete',
+                'supplier.view', 'supplier.create', 'supplier.edit', 'supplier.delete', 'supplier.approve',
+                'distributor.view', 'distributor.create', 'distributor.edit', 'distributor.delete', 'distributor.approve',
                 'distributor.view.subordinate',
-                'product.view', 'product.create', 'product.edit', 'product.delete',
+                'product.view', 'product.create', 'product.edit', 'product.delete', 'product.approve',
                 'order.view', 'order.create', 'order.edit', 'order.delete', 'order.approve', 'order.ship',
                 'order.view.subordinate',
-                'payment.view', 'payment.create', 'payment.edit', 'payment.delete',
+                'payment.view', 'payment.create', 'payment.edit', 'payment.delete', 'payment.settle', 'payment.refund',
                 'inventory.view', 'inventory.edit',
+                'warehouse.view', 'warehouse.create', 'warehouse.edit', 'warehouse.delete',
                 'report.view',
+                'rule.manage',
                 'user.manage',
             ]
         );
@@ -36,24 +38,28 @@ class PermissionSeeder extends Seeder
 
         $permissions = [
             'platform' => [
-                'supplier.view', 'supplier.create', 'supplier.edit', 'supplier.delete',
-                'distributor.view', 'distributor.create', 'distributor.edit', 'distributor.delete',
-                'product.view', 'product.create', 'product.edit', 'product.delete',
-                'order.view', 'order.create', 'order.edit', 'order.delete', 'order.approve',
-                'payment.view', 'payment.create', 'payment.edit', 'payment.delete',
-                'inventory.view', 'inventory.edit',
+                'supplier.view', 'supplier.create', 'supplier.edit', 'supplier.delete', 'supplier.approve',
+                'distributor.view', 'distributor.create', 'distributor.edit', 'distributor.delete', 'distributor.approve',
+                'product.view', 'product.approve',
+                'order.view', 'order.approve',
+                'payment.view', 'payment.settle', 'payment.refund',
+                'inventory.view',
+                'warehouse.view',
                 'report.view',
+                'rule.manage',
                 'user.manage',
             ],
             'supplier' => [
                 'product.view', 'product.create', 'product.edit',
                 'order.view', 'order.ship',
                 'inventory.view', 'inventory.edit',
+                'warehouse.view', 'warehouse.create', 'warehouse.edit',
+                'payment.view',
             ],
             'distributor' => [
                 'product.view',
                 'order.view', 'order.create',
-                'payment.view',
+                'payment.view', 'payment.create',
             ],
             'regional_agent' => [
                 'product.view',

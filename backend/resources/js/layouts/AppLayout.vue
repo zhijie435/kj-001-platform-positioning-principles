@@ -10,7 +10,7 @@
                     </div>
                     <div>
                         <div class="font-bold text-lg">Shearerline</div>
-                        <div class="text-xs text-slate-400">供应链管理平台</div>
+                        <div class="text-xs text-slate-400">供应链交易监管平台</div>
                     </div>
                 </div>
             </div>

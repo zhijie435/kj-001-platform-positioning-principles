@@ -9,7 +9,7 @@
                         </svg>
                     </div>
                     <h1 class="text-2xl font-bold text-gray-900">Shearerline</h1>
-                    <p class="text-gray-500 mt-1">B2B 供应链管理平台</p>
+                    <p class="text-gray-500 mt-1">B2B 供应链交易监管平台</p>
                 </div>
 
                 <form @submit.prevent="handleLogin" class="space-y-5">

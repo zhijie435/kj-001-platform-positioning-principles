@@ -3,13 +3,21 @@
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\CurrencyRateController;
 use App\Http\Controllers\CustomsDeclarationController;
 use App\Http\Controllers\CustomerGroupController;
+use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DistributorController;
+use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\MarketController;
+use App\Http\Controllers\OrderController;
+use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\ProductMarketPriceController;
+use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ShipmentController;
 use App\Http\Controllers\ShippingMethodController;
+use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\TaxRuleController;
 use App\Http\Controllers\WarehouseController;
 use Illuminate\Support\Facades\Route;
@@ -17,6 +25,8 @@ use Illuminate\Support\Facades\Route;
 Route::post('/login', [AuthController::class, 'login'])->name('login');
 
 Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
     Route::get('/me', [AuthController::class, 'me'])->name('me');
     Route::put('/profile', [AuthController::class, 'updateProfile'])->name('profile.update');
@@ -27,6 +37,26 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/roles/permissions', [RoleController::class, 'permissions'])->name('roles.permissions');
     Route::apiResource('/roles', RoleController::class)->names('roles');
+
+    Route::apiResource('/suppliers', SupplierController::class)->names('suppliers');
+    Route::put('/suppliers/{supplier}/toggle-status', [SupplierController::class, 'toggleStatus'])->name('suppliers.toggle-status');
+
+    Route::get('/distributors/tree', [DistributorController::class, 'tree'])->name('distributors.tree');
+    Route::apiResource('/distributors', DistributorController::class)->names('distributors');
+    Route::put('/distributors/{distributor}/toggle-status', [DistributorController::class, 'toggleStatus'])->name('distributors.toggle-status');
+
+    Route::get('/categories/tree', [CategoryController::class, 'tree'])->name('categories.tree');
+    Route::apiResource('/categories', CategoryController::class)->names('categories');
+
+    Route::apiResource('/products', ProductController::class)->names('products');
+
+    Route::apiResource('/orders', OrderController::class)->names('orders');
+    Route::put('/orders/{order}/status', [OrderController::class, 'updateStatus'])->name('orders.update-status');
+    Route::post('/orders/{order}/approve', [OrderController::class, 'approve'])->name('orders.approve');
+
+    Route::apiResource('/payments', PaymentController::class)->names('payments');
+
+    Route::apiResource('/inventory', InventoryController::class)->names('inventory');
 
     Route::apiResource('/markets', MarketController::class)->names('markets');
     Route::put('/markets/{market}/toggle-status', [MarketController::class, 'toggleStatus'])->name('markets.toggle-status');

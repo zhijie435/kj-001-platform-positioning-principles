@@ -55,7 +55,6 @@ export const useAuthStore = defineStore('auth', {
         },
 
         can(permissions) {
-            if (this.hasRole('platform')) return true;
             const parts = permissions.split('|');
             return parts.some((p) => this.hasPermission(p));
         },
