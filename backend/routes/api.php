@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\CurrencyRateController;
 use App\Http\Controllers\CustomsDeclarationController;
+use App\Http\Controllers\CustomerGroupController;
 use App\Http\Controllers\MarketController;
 use App\Http\Controllers\ProductMarketPriceController;
 use App\Http\Controllers\ShipmentController;
@@ -50,4 +51,12 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::apiResource('/customs-declarations', CustomsDeclarationController::class)->names('customs-declarations');
     Route::put('/customs-declarations/{customsDeclaration}/status', [CustomsDeclarationController::class, 'updateStatus'])->name('customs-declarations.update-status');
+
+    Route::get('/customer-groups/tree', [CustomerGroupController::class, 'tree'])->name('customer-groups.tree');
+    Route::apiResource('/customer-groups', CustomerGroupController::class)->names('customer-groups');
+    Route::put('/customer-groups/{customerGroup}/toggle-status', [CustomerGroupController::class, 'toggleStatus'])->name('customer-groups.toggle-status');
+    Route::post('/customer-groups/{customerGroup}/attach-users', [CustomerGroupController::class, 'attachUsers'])->name('customer-groups.attach-users');
+    Route::post('/customer-groups/{customerGroup}/detach-users', [CustomerGroupController::class, 'detachUsers'])->name('customer-groups.detach-users');
+    Route::post('/customer-groups/{customerGroup}/attach-distributors', [CustomerGroupController::class, 'attachDistributors'])->name('customer-groups.attach-distributors');
+    Route::post('/customer-groups/{customerGroup}/detach-distributors', [CustomerGroupController::class, 'detachDistributors'])->name('customer-groups.detach-distributors');
 });

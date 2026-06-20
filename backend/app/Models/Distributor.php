@@ -16,6 +16,9 @@ use Illuminate\Support\Collection;
     'contact_person', 'phone', 'email', 'address', 'bank_name',
     'bank_account', 'credit_limit', 'balance', 'discount_rate',
     'status', 'parent_id', 'remark',
+    'market_id', 'country_code', 'tax_id', 'local_business_license',
+    'import_export_code', 'serviced_states', 'payment_terms',
+    'shipping_preferences', 'is_cross_border', 'certifications',
 ])]
 class Distributor extends Model
 {
@@ -27,6 +30,11 @@ class Distributor extends Model
             'credit_limit' => 'decimal:2',
             'balance' => 'decimal:2',
             'discount_rate' => 'integer',
+            'serviced_states' => 'array',
+            'payment_terms' => 'array',
+            'shipping_preferences' => 'array',
+            'is_cross_border' => 'boolean',
+            'certifications' => 'array',
         ];
     }
 
@@ -48,6 +56,26 @@ class Distributor extends Model
     public function orders(): HasMany
     {
         return $this->hasMany(Order::class);
+    }
+
+    public function market(): BelongsTo
+    {
+        return $this->belongsTo(Market::class);
+    }
+
+    public function shipments(): HasManyThrough
+    {
+        return $this->hasManyThrough(Shipment::class, Order::class);
+    }
+
+    public function scopeCrossBorder(Builder $query): Builder
+    {
+        return $query->where('is_cross_border', true);
+    }
+
+    public function scopeByMarket(Builder $query, $marketId): Builder
+    {
+        return $query->where('market_id', $marketId);
     }
 
     public function isRegionalAgent(): bool
