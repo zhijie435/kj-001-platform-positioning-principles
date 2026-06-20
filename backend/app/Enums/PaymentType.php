@@ -8,6 +8,7 @@ enum PaymentType: string
     case ESCROW_RELEASE = 'escrow_release';
     case PLATFORM_FEE = 'platform_fee';
     case REFUND = 'refund';
+    case RECHARGE = 'recharge';
 
     public function label(): string
     {
@@ -16,12 +17,13 @@ enum PaymentType: string
             self::ESCROW_RELEASE => '托管释放',
             self::PLATFORM_FEE => '平台费用',
             self::REFUND => '退款',
+            self::RECHARGE => '余额充值',
         };
     }
 
     public function isIncome(): bool
     {
-        return in_array($this, [self::ESCROW_DEPOSIT, self::PLATFORM_FEE], true);
+        return in_array($this, [self::ESCROW_DEPOSIT, self::PLATFORM_FEE, self::RECHARGE], true);
     }
 
     public function isExpense(): bool
@@ -32,5 +34,10 @@ enum PaymentType: string
     public function affectsOrderPaymentStatus(): bool
     {
         return in_array($this, [self::ESCROW_DEPOSIT, self::REFUND], true);
+    }
+
+    public function isRecharge(): bool
+    {
+        return $this === self::RECHARGE;
     }
 }
